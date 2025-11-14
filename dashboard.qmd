@@ -1,0 +1,144 @@
+---
+title: Gerrymandering Dashboard
+format: dashboard
+theme: minty
+---
+
+```{r}
+library(sf)
+library(tidyverse)
+final <- read_csv("~/stat133/gerrymandering-leyna-liu/data/final.csv")
+g24_sov_precinct <- read_csv("~/stat133/gerrymandering-leyna-liu/data/g24_sov_precinct.csv")
+gerrymandering_table <- read_csv("~/stat133/gerrymandering-leyna-liu/data/gerrymandering_table.csv")
+final2 <- read_csv("~/stat133/gerrymandering-leyna-liu/data/final2.csv")
+g24_sr_precinct <- st_read("~/stat133/gerrymandering-leyna-liu/data/g24_sr_precinct.csv")
+```
+
+Comparison Between Real and Proposed Maps 
+
+```{r}
+d_seats_real <- gerrymandering_table |>
+    summarize(d_seats = sum(winning_party == "D wins"))
+d_seats_real
+```
+
+```{r}
+d_seats_proposed <- final |>
+    summarize(d_seats = sum(winner == "D"))
+d_seats_proposed
+```
+
+```{r}
+r_seats_real <- gerrymandering_table |>
+    summarize(r_seats = sum(winning_party == "R wins"))
+r_seats_real
+```
+
+```{r}
+r_seats_proposed <- final |>
+    summarize(r_seats = sum(winner == "R"))
+r_seats_proposed
+```
+
+Seats:
+
+Democrat:
+
+::: {.row}
+
+::: {.valuebox}
+- Actual 2024 Map:
+Number of Democrat seats: `r d_seats_real`
+Number of Republican seats: `r r_seats_real`
+:::
+
+::: {.valuebox}
+- New Proposed Map: 
+Number of Democrat seats: `r d_seats_proposed`
+Number of Republican seats: `r r_seats_proposed`
+:::
+
+:::
+
+Mean-Median Score:
+
+```{r}
+mean_median_real <- mean(gerrymandering_table$republican_ratio) - median(gerrymandering_table$republican_ratio)
+
+mean_median_real 
+```
+
+```{r}
+mean_median_proposed <- mean(final$d_prop) - median(final$d_prop)
+
+mean_median_proposed
+```
+
+```{r}
+eg_real <- (sum(gerrymandering_table$d_wasted) - sum(gerrymandering_table$r_wasted)) / sum(gerrymandering_table$total_votes)
+
+eg_real
+```
+
+```{r}
+eg_proposed <- (sum(final2$r_wasted) - sum(final2$d_wasted)) / sum(final2$total)
+
+eg_proposed
+```
+
+::: {.row}
+
+:::{.valuebox}
+- Actual 2024 map
+Mean-Median: `r mean_median_real`
+EG: `r eg_real`
+:::
+
+::: {.valuebox}
+- New Proposed Map
+Mean-Median: `r mean_median_proposed`
+EG: `r eg_proposed`
+:::
+
+:::
+
+
+Maps
+
+::: {.row}
+
+::: {.card}
+- Actual 2024 Congressional Districts of California Map
+
+```{r}
+c_2024 <- st_read("~/stat133/gerrymandering-leyna-liu/data/shapefiles/shapefiles/tl_2024_06_cd119.shp")
+
+ggplot() + geom_sf(data = c_2024, fill = "lightblue", color = "purple") + labs(title = "2024 Congressional Districts California Map")
+```
+
+:::
+
+::: {.card}
+- Proposed Map of California 
+
+```{r}
+proposed_2024 <- st_read("~/stat133/gerrymandering-leyna-liu/data/shapefiles/AB604.shp")
+
+ ggplot() + geom_sf(data = proposed_2024, fill = "lightgreen", color = "darkgreen") + labs(title = "New Proposed California Map")
+```
+
+:::
+
+
+:::
+
+
+Methodology 
+
+- The main data sources I used are the 2024 SR Precinct shapefile; the 2024 SOV table; the congressional district map/shapefile of 2024; and the proposed AB604 california district map. 
+
+- So, for my data cleaning, I first cleaned g24_sov_precinct dataset by changing certain columns/variables into numeric variables, and also making sure that there are no missing congressional district numbers (for each precinct). I also cleaned the g24_sr_precinct dataset by changing the CRS (coordinate reference system) of the different shapes to EPSG 3310; setting precision of coordinates to 1; adjusting invalid shapes; and extracting polygon geometries. I then repeated that exact same process to my g24_proposed_congressional_map dataset. I then had to figure out where the precincts overlap in the districts. I also had to rename the column SVPREC to SRPREC in order to join the sov with the sr dataset.
+
+- For the estimation process, the function st_intersection() was used to find the overlapping within what districts the precinct laid. Then, I was finally able to sum votes for each Republican and Democrat parties per district. Then, in the gerrymandering-metrics quarto document, I went on to calculate the mean-median and Efficiency Gaps for both g24_sov_precinct and the joined sr_shp dataset.
+
+- Some caveats about inferring gerrymandering from single statistics is that indications of gerrymandering could also come from natural causes too like different areas having varied levels of turnout or more of a geographic inclination of why votes seem more clustered for democrats. We also assume that votes are spread relatively evenly, which may not be reality.

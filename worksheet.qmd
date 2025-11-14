@@ -1,0 +1,87 @@
+---
+title: "Practice Worksheet: Gerrymandering"
+format: typst
+---
+
+Recall the 3 quantitative approaches to measuring gerrymandering discussed in lecture:\
+1. Mean - Median Score (Grofman, 1983)\
+2. Efficiency Gap (Stephanopolous and McGee, 2015)\
+3. Ensembles / Extreme Outliers\
+Use the following table to practice applying the first two techniques.\
+
+| District | D Votes | R Votes | Result  |
+|:---------:|:-------:|:-------:|:--------|
+| 1 | 62 | 38 | D wins | 38 wasted for R | 61-51 = 10 wasted for D | net wasted = 62 - 38 = 24R
+| 2 | 55 | 45 | D wins | 45 wasted for R | 55-51 = 4 wasted for D | net wasted = 55-45 = 10R
+| 3 | 44 | 56 | R wins | 56-51 = 5 wasted for R | 44 wasted for D | net wasted = 56-44 = 12D
+| 4 | 47 | 53 | R wins | 53-51 = 2 wasted for R | 47 wasted for D | net wasted = 53-47 = 6D
+| 5 | 46 | 54 | R wins | 54-51 = 3 wasted for R | 46 wasted for D | net wasted = 54-46 = 8D
+| **Total** | **254** | **246** |          |
+
+```{r}
+#| message: false
+#| echo: false
+library(tidyverse)
+votes <- tibble(District = 1:5,
+                d_votes = c(62, 55, 44, 47, 46),
+                r_votes = c(38, 45, 56, 53, 54),
+                result = c(rep("D wins", 2), rep("R wins", 3)))
+```
+
+### Q1. Mean-Median Score
+
+Calculate the mean-median score associated with this particular district breakdown of votes.
+
+```{r}
+view(votes)
+
+votes2 <- votes |>
+    mutate(v_i = r_votes / (r_votes + d_votes)) |>
+    summarize(mean_v = mean(v_i),
+    med_v = median(v_i)) |>
+        mutate(mean_v - med_v)
+
+view(votes2)
+# mean(v_i) -> what statewide Republican vote shares look like
+# median(v_i) -> what middle district vote shares look like (the one that decides who wins majority)
+# If mean(v_i) - median(v_i) < 0: if median republican votes are higher than mean, that means the median district is more republican than the overall statewide average -> that means that Republicans would need more than 50% of statewide votes to  win majoirty seats -> so this district map would favor democrats -> *** median district more Republican than state average, so Republicans would have need MORE votes to win majority, and Republicans WASTING THEIR VOTES
+# where v_i = republican vote share in each district 
+# If mean(v_i) - median(v_i) > 0: if median republican votes are lower than mean, that means the median district is less republican than statewide average -> so Republicans can win majority seats if they have less than 50% of total votes statewide -> so that district map would favor Republicans -> *** median district less Republican (MORE democratic) than state average, so democrats would be WASTING THEIR VOTES
+# so basically if v_i = republican vote share in a district: then negative mean-median value -> favor democrat, positive mean-median value -> favor republican 
+```
+
+### Q2. Efficiency Gap
+
+Calculate the Efficiency Gap (EG) associated with this particular district breakdown of votes.
+
+*Tip*: it may be helpful to write a function that takes a vector of votes across districts for party A and vector of votes for the party B and returns a vector of the number votes wasted by party A across districts.
+
+
+```{r}
+view(votes)
+```
+
+```{r}
+eg_gap <- votes |>
+    mutate(
+        winner = if_else(d_votes > r_votes, "D", "R"),
+        d_wasted = if_else(winner == "D", d_votes - 51, d_votes),
+        r_wasted = if_else(winner == "R", r_votes - 51, r_votes)
+    )
+
+eg_gap |>
+    summarize(
+        total_d_wasted = sum(d_wasted),
+        total_r_wasted = sum(r_wasted),
+        total_votes = sum(d_votes + r_votes)
+    ) |>
+        mutate(eg_gap = (total_d_wasted - total_r_wasted) / total_votes)
+```
+
+d_wasted_votes_total <- 152
+r_wasted_votes_total <- 93
+(152 - 93) / 500 = 0.118
+
+This means Democrats wasted more votes than Republicans (152 votes), so would be an advantage for Republicans since the EG value is a positive one (0.118).
+
+Also if you flip the EG equation to (total_r_wasted - total_d_wasted) / total_votes, then the meaning of the signs would be flipped, so if EG value is positive, then democrat advantage, if EG value is negative, then Republican advantage. 

@@ -1,0 +1,134 @@
+---
+title: Gerrymandering Metrics
+format: typst
+---
+### 2024 Election Results and the 2024 District Map
+
+### Calculating Gerrymandering: Mean-Median Score & Efficiency Gap
+
+```{r}
+library(tidyverse)
+
+g24_sov_precinct <- read_csv("~/stat133/gerrymandering-leyna-liu/data/g24_sov_precinct.csv")
+```
+
+```{r}
+# Here I created the table that has columns for total democrat votes (d_votes); total republican votes (r_votes); total votes for republican and democrats; the ratio of votes for democrats by using if_else, so if total_votes > 0, then calculate the ratio, and if the total_votes is = 0, then print NA. 
+
+# winning_party column is if d_votes > r_votes then print "D wins" if r_votes > d_votes then "R wins", and otherwise print "Tie"
+
+# Then I calculate the wasted votes for each party by following the framework from the worksheet 
+
+# you need 51 votes to win, as that is just over 50, so you do d_votes - 51, and r_votes - 51
+
+gerrymandering_table <- g24_sov_precinct |>
+    group_by(CDDIST) |>
+    summarize(
+        d_votes = sum(CNGDEM01, na.rm = TRUE),
+        r_votes = sum(CNGREP01, na.rm = TRUE),
+        .groups = "drop"
+    ) |>
+        mutate(
+            total_votes = d_votes + r_votes,
+            democrat_ratio = if_else(total_votes > 0, d_votes / total_votes, NA),
+            republican_ratio = if_else(total_votes > 0, r_votes / total_votes, NA),
+            winning_party = if_else(d_votes > r_votes, "D wins", if_else(r_votes > d_votes, "R wins", "Tie")),
+            d_wasted = if_else(winning_party == "D wins", d_votes - (51), d_votes),
+            r_wasted = if_else(winning_party == "R wins", r_votes - (51), r_votes)
+        ) 
+```
+
+```{r}
+# I am saving the gerrymandering_table in my data folder under gerrymandering-leyna-liu so I can use it in DASHBOARD (part 7) of project
+
+write_csv(gerrymandering_table, "data/gerrymandering_table.csv")
+```
+
+```{r}
+# Now I will calculate the Mean-Median value:
+
+mean_median <- gerrymandering_table |>
+    mutate(v_i = republican_ratio) |>
+        summarize(mean_v = mean(v_i), med_v = median(v_i)) |>
+        mutate(mean_v - med_v)
+
+mean_median
+
+# So v_i is the republican vote share for each congressional district, so if mean - median is greater than 0, that means median republican votes is lower than the mean republican votes, and that means that median republican votes is less than statewide average, so that means republicans are not wasting their votes and democrats are wasting more votes.
+
+# essentially if democrats are winning in landslides in places they already win more easily, then they are wasting more votes. so even though democrats are winning more congressional districts, they are wasting more votes, and are hence less efficient.
+```
+
+```{r}
+# so here even though the gerrymandering table already has a total_votes column, since you are feeding it through summarize you have to write total votes again because summarize makes it so that there are only columns total_d_wasted, total_r_wasted, and total_votes left 
+
+total_wasted <- gerrymandering_table |>
+    summarize(
+        total_d_wasted = sum(d_wasted, na.rm = TRUE),
+        total_r_wasted = sum(r_wasted, na.rm = TRUE),
+        total_votes = r_votes + d_votes 
+    ) |>
+        mutate(eg_gap = (total_d_wasted - total_r_wasted) / total_votes)
+
+total_wasted
+```
+
+Since the eg_gap is positive through all the cells in the column, that means the total_d_wasted is larger than total_r_wasted, meaning democrats wasted more votes. In addition, the mean-median is positive when v_i represents the Republican share, meaning again Democrats wasted more votes and was less efficient, even though Democrats won more districts. 
+
+
+
+### 2024 Election Results and the proposed 2025 District Map
+
+### PART 6: Calculating Gerrymandering Again
+
+```{r}
+# From data-cleaning quarto document for part 5:
+
+final <- read_csv("data/final.csv")
+```
+
+```{r}
+# Mean-Median value:
+mean <- mean(final$d_prop)
+median <- median(final$d_prop)
+
+new_mean_median <- mean - median
+
+# Republican advantage since new_mean_median is a positive value
+
+# here median represents the typical district (or middle district), and mean represents the average democratic vote share
+
+# so, mean = how democratic the state is overall, and median = how democratic the typical district is 
+
+# so, when median is lower that means that the typical district is less democratic than the overall democratic vote in the state, meaning there is probably a few districts that are blue concentrated, which is not efficient. 
+```
+
+Republican advantage since new_mean_median is a positive value
+
+```{r}
+# Add wasted votes for both parties in final 
+
+final2 <- final |>
+    mutate(
+        d_wasted = if_else(
+            winner == "D",
+            d_votes_total_dist - 51,
+            d_votes_total_dist
+        ),
+        r_wasted = if_else(
+            winner == "R",
+            r_votes_total_dist - 51,
+            r_votes_total_dist
+        )
+    )
+```
+
+```{r}
+# calculate total wasted for both parties then calculate eg
+
+total_d_wasted <- sum(final2$d_wasted, na.rm = TRUE)
+total_r_wasted <- sum(final2$r_wasted, na.rm = TRUE)
+total_votes <- sum(final2$total, na.rm = TRUE)
+
+new_eg_value <- (total_r_wasted - total_d_wasted) / total_votes
+```

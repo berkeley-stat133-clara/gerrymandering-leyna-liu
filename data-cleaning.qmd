@@ -1,0 +1,208 @@
+---
+title: Data Cleaning
+format: typst
+---
+
+```{r}
+library(tidyverse)
+
+g24_sov_precinct <- read_csv("~/stat133/gerrymandering-leyna-liu/data/g24_sov_by_g24_svprec.csv")
+```
+
+```{r}
+# Using glimpse gives us an idea of each column and the elements within each column.
+
+# As background, each row represents one precinct, and each column represents something new. So, COUNTY -> for example is county ID number; FIPS -> is a 5 digit county code; SVPREC -> the statewide precinct code or basically a precinct ID inside a single county (multiple precincts in a county THAT REPEAT IN OTHER COUNTIES TOO, so think of it as a house address that is not particular to one "city"); ADDIST -> assembly district number; SVPREC_KEY -> statewide key that is unique, unlike SVPREC it is a unique code combining county FIPS code, SVPREC, and election code, so each SVPREC_KEY should be unique per row; DEMREG -> registration count for democrats; REPREG -> registration counts for Republicans ; AIPREG -> registration count for American Independent; GRNREG -> registration count for green party. 
+
+glimpse(g24_sov_precinct)
+```
+
+```{r}
+# Now, check for repeated precincts, using the column SVPREC_KEY, as each SVREC_KEY should be unique to each row (which each row represents a precinct).
+
+# duplicated() checks row by row to see if a element has repeated in SVPREC_KEY column, and marks TRUE if it has and FALSE if it hasn't repeated. 
+
+# By taking the sum of duplicated, it checks how many TRUEs and FALSEs (0s) there are, so output of 0 means no repeats, output of >0 means there're TRUEs (1s) or repeats.
+
+sum(duplicated(g24_sov_precinct$SVPREC_KEY))
+```
+
+```{r}
+# Just to make sure I am making certain columns numeric variables of it isn't already.
+
+g24_sov_precinct <- g24_sov_precinct |>
+    mutate(
+        COUNTY = as.numeric(COUNTY),
+        FIPS = as.numeric(FIPS),
+        ADDIST = as.numeric(ADDIST),
+        CDDIST = as.numeric(CDDIST),
+        SDDIST = as.numeric(SDDIST),
+        BEDIST = as.numeric(BEDIST),
+        TOTREG = as.numeric(TOTREG),
+        TOTREG = as.numeric(TOTREG),
+    )
+
+# In fact, since there are way too many columns to type them each one by one as.numeric(), I will use across() function.
+
+# across() tells R to apply a command to more than 1 row at once
+
+g24_sov_precinct <- g24_sov_precinct |>
+    mutate(
+        across(32:76, as.numeric)
+    )
+
+view(g24_sov_precinct)
+```
+
+```{r}
+# Make sure there are no missing congressional district numbers (for each precinct):
+sum(is.na(g24_sov_precinct$CDDIST))
+
+# is.na() gives the TRUEs and FALSEs (with FALSE being no NA), and the sum should be 0. 
+```
+
+```{r}
+# we are going to save the new cleaned dataset into the data section of my stat133 folder on my computer
+write_csv(g24_sov_precinct, "~/stat133/gerrymandering-leyna-liu/data/g24_sov_precinct.csv")
+
+# write_csv() allows you to add data in csv format to your folder
+# general formula: write_csv(x, "y")
+# where x = the data frame you want to save into your folder
+# "y" = path to get to file/folder you want to save it at, and at the end add the name of the new file: g24_sov_precinct.csv
+```
+
+### Part 5: Re-running the 2024 Election 
+
+```{r}
+library(sf)
+library(tidyverse)
+```
+
+```{r}
+g24_sr_precinct <- st_read("~/stat133/gerrymandering-leyna-liu/data/shapefiles/srprec_state_g24_v01_shp.shp")
+
+g24_proposed_congressional_map <- st_read("~/stat133/gerrymandering-leyna-liu/data/shapefiles/AB604.shp")
+```
+
+```{r}
+g24_sov_precinct <- read_csv("~/stat133/gerrymandering-leyna-liu/data/g24_sov_precinct.csv")
+```
+
+```{r}
+# First we have to clean the data (SR precincts)
+
+sr_shp <- g24_sr_precinct |>
+    st_transform(3310) |>
+    st_set_precision(1) |>
+    st_make_valid() |>
+    st_collection_extract("POLYGON")
+
+# st_transform(3310) -> changes the CRS (coordinate reference system) of the different shapes to EPSG 3310 (which is a equal area projection for California) -> so essentially coordinates are adjusted to the 3310 system for the shapes 
+
+# st_set_precision(1) -> sets precision of coordinates to 1 -> helps mitigate numerical errors when overlapping shapes, cleans up the coordinates 
+
+# st_make_valid() -> adjusts invalid shapes
+
+# st_collection_extract("POLYGON") -> keeps only polygon geometries -> for ex. if there were mixed geometry types like multipolygons or multilines, only polygon would be extracted 
+```
+
+```{r}
+# Now, I will repeat the exact same process for the proposed congressional map data
+
+proposed_map <- g24_proposed_congressional_map |>
+    st_transform(3310) |>
+    st_set_precision(1) |>
+    st_make_valid() |>
+    st_collection_extract("POLYGON")
+
+```
+
+```{r}
+# Now we want to find where our precincts overlap with the districts. For example, Precinct A could lie partially in District 1, but also partially in District 2. 
+
+# st_intersection() is able to create a table of those different overlaps like how one chunk of precinct A is in district 1, and another chunk of precinct A is in district 2 (which in the table will translate to 2 seperate rows for each chunk of precinct A)
+
+overlapping <- st_intersection(
+    sr_shp |>
+        select(SRPREC),
+    proposed_map |>
+        select(new_dist = DISTRICT)
+) |>
+    mutate(overlap_area = st_area(geometry)) |>
+    group_by(SRPREC) |>
+    mutate(prop_of_precinct = as.numeric(overlap_area / sum(overlap_area)))
+
+# st_intersection() takes two spatial objects (like our two polygons here), and find where they overlap. the new output will also have new geometries for every overlapping piece
+
+# Next, from our sr_shp polygon we want to select only the SRPREC column, which is the precinct IDs.
+
+# Then, from our proposed_map polygon we select only the DISTRICT column, which is the district IDs, and simultaneously also renaming the column to new_dist
+
+# Next, we create a new column called overlap_area, by using st_area() function which calculates the area of each geometry/polygon. geometry is the column that stores the actual shape/polygon (remember from lecture it stores the points that make up the polygon) of each overlapping piece.
+
+# Now, we group by SRPREC (precinct IDs) -> telling R to treat rows with the same precinct IDs as 1 group
+
+# the previous grouping prepares us to make new column called pct_precinct, where we take area of overlapping piece in precinct divided by total precinct area -> essentially asking what proportion of precinct in this district
+# as.numeric() is important since the variables/columns have not been converted to numeric variable yet
+
+# For ex. if precinct A has 2 polygons/pieces:
+# 1 piece in District 1: area = 30
+# 1 piece in District 2: area = 70
+# sum of overlap areas = 100
+# -> piece 1 = 30/100 = 0.3
+# -> piece 2 = 70/100 = 0.7
+```
+
+```{r}
+# First, dataset g24_sov_precinct does NOT have column SRPREC, instead it only has column SVPREC. So we need to rename it to SRPREC, so that it can be joined by overlapping dataset that has SRPREC column.
+
+# So I select SVPREC, CNGDEM01, CNGREP01 from g24_sov_precinct and rename them
+
+# Then, I can finally join the dataframes overlapping and votes_precinct by common key SRPREC.
+
+# So, after joining by key SRPREC, we create new columns d, taking d_votes, the total amount of democratic votes in the whole precinct (from votes_precinct dataset), and multiplying it by the proportion of area of precinct in a district (our column from overlapping dataset) -> this tells us how many democratic votes should we assign to this precinct based on how much of the area is in a certain district 
+
+# for ex. if precinct 10 has 200 democratic votes, and 70% of this precinct is in district 7 (with the other 30% of this precinct in district 2), then 200*0.70 = 140 votes should be assigned to district 7 from this specific presinct (precinct 10).
+
+votes_precinct <- g24_sov_precinct |>
+    select(SVPREC, CNGDEM01, CNGREP01) |>
+    rename(
+        SRPREC = SVPREC,
+        d_votes = CNGDEM01,
+        r_votes = CNGREP01
+    )
+
+joined_precinct <- overlapping |>
+    left_join(votes_precinct, by = "SRPREC") |>
+    mutate(
+        d_votes_based_district = d_votes * prop_of_precinct,
+        r_votes_based_district = r_votes * prop_of_precinct
+    )
+```
+
+```{r}
+# So first you group_by(new_dist) column from joined_precinct dataset, which tells R to treat rows with the same district number as one group. We want to later sum the votes in each district.
+
+# Now, we calculate the summary statistics, so we sum all the democratic votes assigned to each area based on the district. For ex. if District 7 is made up of 17 different areas/pieces, then, this sums all the votes for each piece, resulting in total votes in that district for democrats. Then, I just repeat the process for Republicans. So for each district we sum up all the areas that make up each district, resulting in total republican votes cast in that district.
+
+# finally, we create a winner column, so if d_votes_total_dist > r_votes_total_dist, then print "D", otherwise print "R". Then, we create column total which adds d_votes_total_dist and r_votes_total_dist. Then, d_prop is proportion of d votes per district, and r_prop is proporiton of r votes per district.
+
+final <- joined_precinct |>
+    group_by(new_dist) |>
+    summarize(
+        d_votes_total_dist = sum(d_votes_based_district, na.rm = TRUE),
+        r_votes_total_dist = sum(r_votes_based_district, na.rm = TRUE)
+    ) |>
+        mutate(
+            winner = if_else(d_votes_total_dist > r_votes_total_dist, "D", "R"),
+            total = d_votes_total_dist + r_votes_total_dist,
+            d_prop = d_votes_total_dist / total,
+            r_prop = r_votes_total_dist / total
+        )
+```
+
+```{r}
+# I am saving the final dataset in my data folder under gerrymandering-leyna-liu so I can use it in PART 6 of project
+
+write_csv(final, "data/final.csv")
+```

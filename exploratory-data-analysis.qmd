@@ -1,0 +1,97 @@
+---
+title: Exploratory Data Analysis
+format: typst
+---
+
+### Question 1
+
+Which precincts had the closest presidential race (between Democrats and Republicans)?
+
+### Answer 1
+
+```{r}
+library(tidyverse)
+
+g24_sov_precinct <- read_csv("~/stat133/gerrymandering-leyna-liu/data/g24_sov_precinct.csv")
+```
+
+```{r}
+# Here we use variables/columns PRSDEM01 and PRSREP01 because it shows the votes between presidential candidates (democrats vs. republicans)
+
+# we use abs() as the absolute value by subtracting democratic presidential candidate votes - republican presidential candidate votes
+
+# then we filter() to remove the precincts with no votes (or 0s)
+
+# then we arrange() so that the closest races are first (value of 0 in the cells first)
+
+# and i selected specific columns so it is easier to look at 
+
+closest <- g24_sov_precinct |>
+    mutate(closest_race = abs(PRSDEM01 - PRSREP01)) |>
+    filter(PRSDEM01 + PRSREP01 > 0) |>
+    arrange(closest_race) |>
+    select(SVPREC_KEY, COUNTY, PRSDEM01, PRSREP01, closest_race)
+
+closest
+```
+
+It seems like County 1 had the closest race as the votes for Democrats and Republicans were equal. Then County 3 and 4 were next in terms of race closest. 
+
+### Question 2
+
+What is the range of total sizes of the precincts?
+
+### Answer 2
+
+```{r}
+# Here, I used the TOTVOTE column/variable because it is the total number of votes casted per precinct (or row).
+
+# So, by calculating the min and the max of TOTVOTE you can see the range of votes casted per precinct or essentially the range of total sizes of precincts. 
+
+stats_precinct <- g24_sov_precinct |>
+    summarize(
+        min_precinct = min(TOTVOTE, na.rm = TRUE),
+        median_precinct = median(TOTVOTE, na.rm = TRUE),
+        mean_precinct = mean(TOTVOTE, na.rm = TRUE),
+        max_precinct = max(TOTVOTE, na.rm = TRUE)
+    )
+
+stats_precinct
+```
+
+The output shows that the min is 0 and the max is 3,793,980 so that is the range. I also added the median and mean and one could also add Q1 and Q3 if they wanted to the summary statistics using the quantile function. 
+
+### Question 3
+
+How many precincts/counties/districts featured two candidates from the same party?
+
+### Answer 3
+
+```{r}
+# So, ASSDEM01 is votes casted for first democratic candidate for assembly, ASSDEM02 is votes casted for second democratic candidate for assembly, CNGDEM01 is votes casted for democratic candidate for congress, CNGREP01 is votes casted for republican candidate for congress, and so forth. It seems like there are 2 candidates for each party running for assembly, congress, and senate.
+
+# First ASSDEM01 > 0 will allow R to ouput TRUE if anyone voted for 1st democratic candidate running for assembly position, and FALSE if no one voted for them. Then the same is done for ASSDEM02 (the 2nd democratic candidate).
+
+# Then, >= 2 means if a row for example had TRUE + FALSE = 1 + 0 = 1, meaning only ASSDEM01 got votes, then >=2 would output FALSE, meaning that only 1 candidate got votes in this party. So if the output is TRUE, that means there are multiple candidates from the same party. The same would be repeated for the two republican candidates (ASSREP01 and ASSREP02).
+
+# same_assembly = dem_assembly | rep_assembly -> would output TRUE if dem_assembly OR rep_assembly have more than 2 votes in that specific precinct (or row), and FALSE otherwise.
+
+# then, the exact same process is applied to the congress and senate elections.
+
+same_party <- g24_sov_precinct |>
+    mutate(
+        dem_assembly = ((ASSDEM01 > 0) + (ASSDEM02 > 0)) >= 2,
+        rep_assembly = ((ASSREP01 > 0) + (ASSREP02 > 0)) >= 2,
+        same_assembly = dem_assembly | rep_assembly,
+        dem_congress = ((CNGDEM01 > 0) + (CNGDEM02 > 0)) >= 2,
+        rep_congress = ((CNGREP01 > 0) + (CNGREP02 > 0)) >= 2,
+        same_congress = dem_congress | rep_congress,
+        dem_senate = ((SENDEM01 > 0) + (SENDEM02 > 0)) >= 2,
+        rep_senate = ((SENREP01 > 0) + (SENREP02 > 0)) >= 2,
+        same_senate = dem_senate | rep_senate 
+    )
+
+same_party
+```
+
+It seems like based on the output that assembly election had many precincts featuring 2 candidates for at least 1 party. The same can be said about the senate and congress elections.
